@@ -1,2 +1,15 @@
 # clearskies-akeyless-custom-producer
-Handlers to assist with the generation of custom dynamic producer endpoints for Akeyless
+
+Contains clearskies handlers that should make it very easy to create custom producers for Akeyless
+
+# Installation, Documentation, and Usage
+
+To install:
+
+```
+pip3 install clear-skies-akeyless-custom-producer
+```
+
+# Usage
+
+WIP
