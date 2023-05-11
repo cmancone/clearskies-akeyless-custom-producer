@@ -5,6 +5,7 @@ class NoInput(clearskies.handlers.Base, clearskies.handlers.SchemaHelper):
     _configuration_defaults = {
         'base_url': '',
         'can_rotate': True,
+        'can_revoke': True,
         'create_callable': None,
         'revoke_callable': None,
         'rotate_callable': None,
@@ -40,23 +41,33 @@ class NoInput(clearskies.handlers.Base, clearskies.handlers.SchemaHelper):
             raise ValueError(
                 f"{error_prefix} you must provide 'id_column_name' - the name of a key from the response of the create callable that will be passed along to the revoke callable"
             )
-        if configuration.get('can_rotate'):
-            if not configuration.get('rotate_callable'):
-                raise ValueError(f"{error_prefix} you must provide the rotate callable or set 'can_rotate' to False")
-            if not callable(configuration.get('rotate_callable')):
-                raise ValueError(f"{error_prefix} 'rotate_callable' must be a callable but was something else")
-        for callable_name in ['create_callable', 'revoke_callable']:
-            if not configuration.get(callable_name):
-                raise ValueError(f"{error_prefix} you must provide '{callable_name}'")
-            if not callable(configuration.get(callable_name)):
-                raise ValueError(f"{error_prefix} '{callable_name}' must be a callable but was something else")
+        for action in ['revoke']:
+            if not configuration.get(f'can_{action}'):
+                continue
+            if not configuration.get(f'{action}_callable'):
+                raise ValueError(f"{error_prefix} you must provide '{action}_callable' or set 'can_{action}' to False")
+            if not callable(configuration.get(f'{action}_callable')):
+                raise ValueError(f"{error_prefix} '{action}_callable' must be a callable but was something else")
+        if not configuration.get('create_callable'):
+            raise ValueError(f"{error_prefix} you must provide 'create_callable'")
+        if not callable(configuration.get('create_callable')):
+            raise ValueError(f"{error_prefix} 'create_callable' must be a callable but was something else")
+        if configuration.get('rotate_callable'):
+            if not configuration.get('can_rotate'):
+                raise ValueError(
+                    f"{error_prefix} 'rotate_callable' was provided, but can_rotate is set to False.  To avoid undefined behavior, this is not allowed."
+                )
+            if not callable(configuration['rotate_callable']):
+                raise ValueError(
+                    f"{error_prefix} 'rotate_callable' must be a callable (or None) but was something else"
+                )
         if configuration.get('schema') is not None:
             self._check_schema(configuration['schema'], [], error_prefix)
 
     def handle(self, input_output):
         if full_path == self.configuration('create_endpoint'):
             return self.create(input_output)
-        elif full_path == self.configuration('revoke_endpoint'):
+        elif full_path == self.configuration('revoke_endpoint') and self.configuration('can_revoke'):
             return self.revoke(input_output)
         elif full_path == self.configuration('rotate_endpoint') and self.configuration('can_rotate'):
             return self.rotate(input_output)
@@ -88,6 +99,12 @@ class NoInput(clearskies.handlers.Base, clearskies.handlers.SchemaHelper):
             raise InputError("'payload' in JSON POST body was not a valid JSON string")
         return payload
 
+    def _get_ids(self, input_output):
+        request_json = input_output.request_data(required=True)
+        if 'ids' not in request_json:
+            raise InputError("Missing 'ids' in JSON POST body")
+        return request_json['ids']
+
     def create(self, input_output):
         try:
             payload = self._get_payload(input_output)
@@ -105,15 +122,88 @@ class NoInput(clearskies.handlers.Base, clearskies.handlers.SchemaHelper):
             for_rotate=False,
         )
 
-        id_column_name = self.configuration('id_column_name')
-        if id_column_name not in credentials:
-            raise ValueError(
-                f"Response from create callable did not include the required id column: '{id_column_name}'"
+        # we need to return a meaningful id if we are going to revoke at the end
+        if self.configuration('can_revoke'):
+            id_column_name = self.configuration('id_column_name')
+            if id_column_name not in credentials:
+                raise ValueError(
+                    f"Response from create callable did not include the required id column: '{id_column_name}'"
+                )
+            # this is stupid but I'm doing it - see the revoke function for reasons
+            credential_id = credentials[id_column_name].replace('_', 'ZZZZ----AAAA')
+        else:
+            credential_id = 'i_dont_need_an_id'
+
+        return input_output.respond({
+            'id': credential_id,
+            'response': credentials,
+        }, 200)
+
+    def revoke(self, input_output):
+        try:
+            payload = self._get_payload(input_output)
+            ids = self._get_ids(input_output)
+        except InputError as e:
+            return self.error(input_output, str(e), 400)
+
+        errors = self._check_payload(payload)
+        if errors:
+            return self.input_errors(input_output, input_errors)
+
+        for raw_id in ids:
+            # Akeyless prepends some stuff to the id to make it unique, which we have to remove.
+            # They will stick some parts and separate things with an underscore.  We therefore want
+            # to split on an underscore and grab the part at the end.  This can cause trouble if the
+            # id itself contains an underscore.  To avoid this, the create function replaces underscores
+            # with a string that is very unlikely to exist in the actual id, so we have to reverse that.
+            id = raw_id.split('_')[-1].replace('ZZZZ----AAAA', '_')
+            self._di.call_function(
+                self.configuration('revoke_callable'),
+                **payload,
+                payload=payload,
+                id_to_delete=id,
             )
 
         return input_output.respond({
-            'id': credentials[id_column_name],
-            'response': credentials,
+            'revoked': ids,
+            'message': '',
+        }, 200)
+
+    def rotate(self, input_output):
+        try:
+            payload = self._get_payload(input_output)
+        except InputError as e:
+            return self.error(input_output, str(e), 400)
+
+        errors = self._check_payload(payload)
+        if errors:
+            return self.input_errors(input_output, input_errors)
+
+        # The user may have provided a rotate callable, in which case just use that.
+        if self.configuration('rotate_callable'):
+            new_payload = self._di.call_function(
+                self.configuration('rotate_callable'),
+                **payload,
+                payload=payload,
+            )
+        # otherwise, perform a standard create+revoke
+        else:
+            new_payload = self._di.call_function(
+                self.configuration('create_callable'),
+                **payload,
+                payload=payload,
+                for_rotate=True,
+            )
+            if self.configuration('can_revoke'):
+                self._di.call_function(
+                    self.configuration('revoke_callable'),
+                    **payload,
+                    payload=payload,
+                    id_to_delete=payload.get(self.configuration('id_column_name')),
+                )
+
+        return input_output.respond({
+            'payload': json.dumps(new_payload),
         }, 200)
 
     def documentation(self):
