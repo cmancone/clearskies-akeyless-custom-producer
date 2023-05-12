@@ -126,11 +126,11 @@ class NoInputTest(unittest.TestCase):
         self.assertDictEqual({'payload': '{"key": "' + self.new_key + '", "secret": "' + self.new_secret + '"}'},
                              response[0])
         self.assertDictEqual({
-            'key': '1111-2222',
-            'secret': 'shhhhh',
+            'key': self.new_key,
+            'secret': self.new_secret,
             'payload': {
-                'key': '1111-2222',
-                'secret': 'shhhhh',
+                'key': self.new_key,
+                'secret': self.new_secret,
             },
             'id_to_delete': '1111-2222',
         }, self.delete_call)

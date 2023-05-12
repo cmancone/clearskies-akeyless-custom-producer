@@ -225,8 +225,8 @@ class NoInput(clearskies.handlers.SchemaHelper, Base):
             if self.configuration('can_revoke'):
                 self._di.call_function(
                     self.configuration('revoke_callable'),
-                    **payload,
-                    payload=payload,
+                    **new_payload,
+                    payload=new_payload,
                     id_to_delete=payload.get(self.configuration('id_column_name')),
                 )
 
