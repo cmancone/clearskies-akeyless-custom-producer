@@ -1,7 +1,8 @@
 import json
 import clearskies
 from clearskies.handlers.exceptions import InputError
-class NoInput(clearskies.handlers.Base, clearskies.handlers.SchemaHelper):
+from clearskies.handlers.base import Base
+class NoInput(clearskies.handlers.SchemaHelper, Base):
     _configuration_defaults = {
         'base_url': '',
         'can_rotate': True,
@@ -23,16 +24,16 @@ class NoInput(clearskies.handlers.Base, clearskies.handlers.SchemaHelper):
         # we don't need authentication but clearskies requires it, so provide one if it doesn't exist
         if 'authentication' not in configuration:
             configuration['authentication'] = clearskies.authentication.public()
-        return super().configure(configuration)
+        super().configure(configuration)
 
     def _finalize_configuration(self, configuration):
         # add in our base url and make sure the final result doesn't start or end with a slash
         base_url = configuration['base_url'].strip('/')
         for endpoint in ['create_endpoint', 'revoke_endpoint', 'rotate_endpoint']:
             configuration[endpoint] = (base_url + '/' + configuration[endpoint].strip('/')).lstrip('/')
-        if configuration.get('schema'):
-            configuration['schema'] = self._schema_to_columns(configuration['schema'])
-        super()._finalize_configuration(configuration)
+        if configuration.get('payload_schema'):
+            configuration['payload_schema'] = self._schema_to_columns(configuration['payload_schema'])
+        return super()._finalize_configuration(configuration)
 
     def _check_configuration(self, configuration):
         super()._check_configuration(configuration)
@@ -53,7 +54,7 @@ class NoInput(clearskies.handlers.Base, clearskies.handlers.SchemaHelper):
         if not callable(configuration.get('create_callable')):
             raise ValueError(f"{error_prefix} 'create_callable' must be a callable but was something else")
         if configuration.get('rotate_callable'):
-            if not configuration.get('can_rotate'):
+            if 'can_rotate' in configuration and not configuration.get('can_rotate'):
                 raise ValueError(
                     f"{error_prefix} 'rotate_callable' was provided, but can_rotate is set to False.  To avoid undefined behavior, this is not allowed."
                 )
@@ -61,24 +62,29 @@ class NoInput(clearskies.handlers.Base, clearskies.handlers.SchemaHelper):
                 raise ValueError(
                     f"{error_prefix} 'rotate_callable' must be a callable (or None) but was something else"
                 )
-        if configuration.get('schema') is not None:
-            self._check_schema(configuration['schema'], [], error_prefix)
+        if configuration.get('payload_schema') is not None:
+            self._check_schema(configuration['payload_schema'], None, error_prefix)
 
     def handle(self, input_output):
+        full_path = input_output.get_full_path().strip('/')
         if full_path == self.configuration('create_endpoint'):
             return self.create(input_output)
-        elif full_path == self.configuration('revoke_endpoint') and self.configuration('can_revoke'):
-            return self.revoke(input_output)
+        elif full_path == self.configuration('revoke_endpoint'):
+            if self.configuration('can_revoke'):
+                return self.revoke(input_output)
+            else:
+                return self.dummy_revoke(input_output)
         elif full_path == self.configuration('rotate_endpoint') and self.configuration('can_rotate'):
             return self.rotate(input_output)
         return self.error(input_output, 'Page not found', 404)
 
     def _check_payload(self, payload):
-        if not self.configuration('schema'):
+        if not self.configuration('payload_schema'):
             return {}
+        schema = self.configuration('payload_schema')
         return {
-            **self._extra_column_errors(payload),
-            **self._find_input_errors(payload),
+            **self._extra_column_errors(payload, schema),
+            **self._find_input_errors(payload, schema),
         }
 
     def _get_payload(self, input_output):
@@ -137,6 +143,28 @@ class NoInput(clearskies.handlers.Base, clearskies.handlers.SchemaHelper):
         return input_output.respond({
             'id': credential_id,
             'response': credentials,
+        }, 200)
+
+    def dummy_revoke(self, input_output):
+        """
+        Revoke, but don't revoke
+
+        This is here because Akeyless always requires a revoke endpoint, but revokation is not always
+        possible. So, if revoke is disabled, we still need to respond to the revoke endpoint.
+        """
+        try:
+            payload = self._get_payload(input_output)
+            ids = self._get_ids(input_output)
+        except InputError as e:
+            return self.error(input_output, str(e), 400)
+
+        errors = self._check_payload(payload)
+        if errors:
+            return self.input_errors(input_output, input_errors)
+
+        return input_output.respond({
+            'revoked': ids,
+            'message': '',
         }, 200)
 
     def revoke(self, input_output):
