@@ -115,11 +115,11 @@ class NoInput(clearskies.handlers.SchemaHelper, Base):
         try:
             payload = self._get_payload(input_output)
         except InputError as e:
-            return self.error(input_output, str(e), 400)
+            return self.error(input_output, e.errors, 400)
 
         errors = self._check_payload(payload)
         if errors:
-            return self.input_errors(input_output, input_errors)
+            return self.input_errors(input_output, errors)
 
         credentials = self._di.call_function(
             self.configuration('create_callable'),
@@ -156,11 +156,11 @@ class NoInput(clearskies.handlers.SchemaHelper, Base):
             payload = self._get_payload(input_output)
             ids = self._get_ids(input_output)
         except InputError as e:
-            return self.error(input_output, str(e), 400)
+            return self.error(input_output, e.errors, 400)
 
         errors = self._check_payload(payload)
         if errors:
-            return self.input_errors(input_output, input_errors)
+            return self.input_errors(input_output, errors)
 
         return input_output.respond({
             'revoked': ids,
@@ -172,11 +172,11 @@ class NoInput(clearskies.handlers.SchemaHelper, Base):
             payload = self._get_payload(input_output)
             ids = self._get_ids(input_output)
         except InputError as e:
-            return self.error(input_output, str(e), 400)
+            return self.error(input_output, e.errors, 400)
 
         errors = self._check_payload(payload)
         if errors:
-            return self.input_errors(input_output, input_errors)
+            return self.input_errors(input_output, errors)
 
         for raw_id in ids:
             # Akeyless prepends some stuff to the id to make it unique, which we have to remove.
@@ -201,11 +201,11 @@ class NoInput(clearskies.handlers.SchemaHelper, Base):
         try:
             payload = self._get_payload(input_output)
         except InputError as e:
-            return self.error(input_output, str(e), 400)
+            return self.error(input_output, e.errors, 400)
 
         errors = self._check_payload(payload)
         if errors:
-            return self.input_errors(input_output, input_errors)
+            return self.input_errors(input_output, errors)
 
         # The user may have provided a rotate callable, in which case just use that.
         if self.configuration('rotate_callable'):
