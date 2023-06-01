@@ -135,8 +135,7 @@ class NoInput(clearskies.handlers.SchemaHelper, Base):
                 raise ValueError(
                     f"Response from create callable did not include the required id column: '{id_column_name}'"
                 )
-            # this is stupid but I'm doing it - see the revoke function for reasons
-            credential_id = credentials[id_column_name].replace('_', 'ZZZZ----AAAA')
+            credential_id = credentials[id_column_name]
         else:
             credential_id = 'i_dont_need_an_id'
 
@@ -178,13 +177,7 @@ class NoInput(clearskies.handlers.SchemaHelper, Base):
         if errors:
             return self.input_errors(input_output, errors)
 
-        for raw_id in ids:
-            # Akeyless prepends some stuff to the id to make it unique, which we have to remove.
-            # They will stick some parts and separate things with an underscore.  We therefore want
-            # to split on an underscore and grab the part at the end.  This can cause trouble if the
-            # id itself contains an underscore.  To avoid this, the create function replaces underscores
-            # with a string that is very unlikely to exist in the actual id, so we have to reverse that.
-            id = raw_id.split('_')[-1].replace('ZZZZ----AAAA', '_')
+        for id in ids:
             self._di.call_function(
                 self.configuration('revoke_callable'),
                 **payload,

@@ -18,7 +18,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='clear-skies-akeyless-custom-producer',
-    version='0.9.1',
+    version='0.9.2',
     description='clearskies handlers for hosting Akeyless custom producer endpoints',
     long_description=long_description,
     long_description_content_type='text/markdown',
