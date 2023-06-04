@@ -1,0 +1,31 @@
+
+
+[tool.poetry]
+name = "clear-skies-akeyless-custom-producer"
+version = "1.0.0"
+description = "clearskies handlers for hosting Akeyless custom producer endpoints"
+authors = [
+    "Conor Mancone <cmancone@gmail.com>"
+]
+repository = "https://github.com/cmancone/clearskies-akeyless-custom-producer"
+license = "MIT"
+readme = "./README.md"
+packages = [
+    { include = "src" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+clear-skies = "^1.14.4"
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^3.2.2"
+yapf = "^0.32.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
