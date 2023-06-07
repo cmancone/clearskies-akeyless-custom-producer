@@ -2,7 +2,7 @@
 
 [tool.poetry]
 name = "clear-skies-akeyless-custom-producer"
-version = "1.0.0"
+version = "1.0.1"
 description = "clearskies handlers for hosting Akeyless custom producer endpoints"
 authors = [
     "Conor Mancone <cmancone@gmail.com>"
@@ -11,7 +11,7 @@ repository = "https://github.com/cmancone/clearskies-akeyless-custom-producer"
 license = "MIT"
 readme = "./README.md"
 packages = [
-    { include = "src" }
+    { include = "clearskies_akeyless_custom_producer", from = "src" }
 ]
 
 [tool.poetry.dependencies]
