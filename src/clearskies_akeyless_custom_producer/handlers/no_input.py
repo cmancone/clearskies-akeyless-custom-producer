@@ -135,7 +135,8 @@ class NoInput(clearskies.handlers.SchemaHelper, Base):
                 raise ValueError(
                     f"Response from create callable did not include the required id column: '{id_column_name}'"
                 )
-            credential_id = credentials[id_column_name]
+            # akeyless will only accept strings as the id value - no integers/etc
+            credential_id = str(credentials[id_column_name])
         else:
             credential_id = 'i_dont_need_an_id'
 
