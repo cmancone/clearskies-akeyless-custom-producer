@@ -1,6 +1,7 @@
 import json
 import clearskies
 from clearskies.handlers.exceptions import InputError
+from .exceptions import ProducerError
 from .no_input import NoInput
 class WithInput(NoInput):
     _configuration_defaults = {
@@ -41,12 +42,17 @@ class WithInput(NoInput):
         if errors:
             return self.input_errors(input_output, input_errors)
 
-        credentials = self._di.call_function(
-            self.configuration('create_callable'),
-            **payload,
-            payload=payload,
-            for_rotate=False,
-        )
+        try:
+            credentials = self._di.call_function(
+                self.configuration('create_callable'),
+                **payload,
+                payload=payload,
+                for_rotate=False,
+            )
+        except InputError as e:
+            return self.error(input_output, str(e), 400)
+        except ProducerError as e:
+            return self.error(input_output, str(e), 400)
 
         # we need to return a meaningful id if we are going to revoke at the end
         if self.configuration('can_revoke'):

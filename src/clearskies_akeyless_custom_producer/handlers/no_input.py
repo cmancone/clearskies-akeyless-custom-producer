@@ -1,7 +1,8 @@
 import json
 import clearskies
-from clearskies.handlers.exceptions import InputError
+from clearskies.handlers.exceptions import ClientError, InputError
 from clearskies.handlers.base import Base
+from .exceptions import ProducerError
 class NoInput(clearskies.handlers.SchemaHelper, Base):
     _configuration_defaults = {
         'base_url': '',
@@ -121,12 +122,15 @@ class NoInput(clearskies.handlers.SchemaHelper, Base):
         if errors:
             return self.input_errors(input_output, errors)
 
-        credentials = self._di.call_function(
-            self.configuration('create_callable'),
-            **payload,
-            payload=payload,
-            for_rotate=False,
-        )
+        try:
+            credentials = self._di.call_function(
+                self.configuration('create_callable'),
+                **payload,
+                payload=payload,
+                for_rotate=False,
+            )
+        except (InputError, ClientError, ProducerError) as e:
+            return self.error(input_output, str(e), 400)
 
         # we need to return a meaningful id if we are going to revoke at the end
         if self.configuration('can_revoke'):
@@ -179,12 +183,15 @@ class NoInput(clearskies.handlers.SchemaHelper, Base):
             return self.input_errors(input_output, errors)
 
         for id in ids:
-            self._di.call_function(
-                self.configuration('revoke_callable'),
-                **payload,
-                payload=payload,
-                id_to_delete=id,
-            )
+            try:
+                self._di.call_function(
+                    self.configuration('revoke_callable'),
+                    **payload,
+                    payload=payload,
+                    id_to_delete=id,
+                )
+            except (InputError, ClientError, ProducerError) as e:
+                return self.error(input_output, str(e), 400)
 
         return input_output.respond({
             'revoked': ids,
@@ -210,19 +217,22 @@ class NoInput(clearskies.handlers.SchemaHelper, Base):
             )
         # otherwise, perform a standard create+revoke
         else:
-            new_payload = self._di.call_function(
-                self.configuration('create_callable'),
-                **payload,
-                payload=payload,
-                for_rotate=True,
-            )
-            if self.configuration('can_revoke'):
-                self._di.call_function(
-                    self.configuration('revoke_callable'),
-                    **new_payload,
-                    payload=new_payload,
-                    id_to_delete=payload.get(self.configuration('id_column_name')),
+            try:
+                new_payload = self._di.call_function(
+                    self.configuration('create_callable'),
+                    **payload,
+                    payload=payload,
+                    for_rotate=True,
                 )
+                if self.configuration('can_revoke'):
+                    self._di.call_function(
+                        self.configuration('revoke_callable'),
+                        **new_payload,
+                        payload=new_payload,
+                        id_to_delete=payload.get(self.configuration('id_column_name')),
+                    )
+            except (InputError, ClientError, ProducerError) as e:
+                return self.error(input_output, str(e), 400)
 
         return input_output.respond({
             'payload': json.dumps(new_payload),
