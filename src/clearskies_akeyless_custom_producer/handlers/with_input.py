@@ -32,6 +32,25 @@ class WithInput(NoInput):
         if configuration.get('input_schema') is not None:
             self._check_schema(configuration['input_schema'], None, error_prefix)
 
+    def _get_input(self, input_output):
+        request_json = input_output.request_data(required=True)
+        # Normally I like strict input validation, but I don't actually know if Akeyless always provides
+        # this, or if they skip this if it is not present.
+        if not request_json.get('input'):
+            return {}
+        if type(request_json['input']) != dict:
+            raise InputError("'input' from request body was not a dictionary and I don't know what to do!")
+        return request_json.get('input')
+
+    def _check_input(self, input_args):
+        if not self.configuration('input_schema'):
+            return {}
+        schema = self.configuration('input_schema')
+        return {
+            **self._extra_column_errors(input_args, schema),
+            **self._find_input_errors(input_args, schema),
+        }
+
     def create(self, input_output):
         try:
             payload = self._get_payload(input_output)
@@ -43,9 +62,20 @@ class WithInput(NoInput):
             return self.input_errors(input_output, input_errors)
 
         try:
+            input_args = self._get_input(input_output)
+        except InputError as e:
+            return self.error(input_output, str(e), 400)
+
+        errors = self._check_input(input_args)
+        if errors:
+            return self.input_errors(input_output, input_errors)
+
+        try:
             credentials = self._di.call_function(
                 self.configuration('create_callable'),
                 **payload,
+                **input_args,
+                input_args=input_args,
                 payload=payload,
                 for_rotate=False,
             )
@@ -61,8 +91,8 @@ class WithInput(NoInput):
                 raise ValueError(
                     f"Response from create callable did not include the required id column: '{id_column_name}'"
                 )
-            # this is stupid but I'm doing it - see the revoke function for reasons
-            credential_id = credentials[id_column_name].replace('_', 'ZZZZ----AAAA')
+            # akeyless only accepts strings for the id - no integers, etc...
+            credential_id = str(credentials[id_column_name])
         else:
             credential_id = 'i_dont_need_an_id'
 
@@ -70,101 +100,3 @@ class WithInput(NoInput):
             'id': credential_id,
             'response': credentials,
         }, 200)
-
-    def dummy_revoke(self, input_output):
-        """
-        Revoke, but don't revoke
-
-        This is here because Akeyless always requires a revoke endpoint, but revokation is not always
-        possible. So, if revoke is disabled, we still need to respond to the revoke endpoint.
-        """
-        try:
-            payload = self._get_payload(input_output)
-            ids = self._get_ids(input_output)
-        except InputError as e:
-            return self.error(input_output, str(e), 400)
-
-        errors = self._check_payload(payload)
-        if errors:
-            return self.input_errors(input_output, input_errors)
-
-        return input_output.respond({
-            'revoked': ids,
-            'message': '',
-        }, 200)
-
-    def revoke(self, input_output):
-        try:
-            payload = self._get_payload(input_output)
-            ids = self._get_ids(input_output)
-        except InputError as e:
-            return self.error(input_output, str(e), 400)
-
-        errors = self._check_payload(payload)
-        if errors:
-            return self.input_errors(input_output, input_errors)
-
-        for raw_id in ids:
-            # Akeyless prepends some stuff to the id to make it unique, which we have to remove.
-            # They will stick some parts and separate things with an underscore.  We therefore want
-            # to split on an underscore and grab the part at the end.  This can cause trouble if the
-            # id itself contains an underscore.  To avoid this, the create function replaces underscores
-            # with a string that is very unlikely to exist in the actual id, so we have to reverse that.
-            id = raw_id.split('_')[-1].replace('ZZZZ----AAAA', '_')
-            self._di.call_function(
-                self.configuration('revoke_callable'),
-                **payload,
-                payload=payload,
-                id_to_delete=id,
-            )
-
-        return input_output.respond({
-            'revoked': ids,
-            'message': '',
-        }, 200)
-
-    def rotate(self, input_output):
-        try:
-            payload = self._get_payload(input_output)
-        except InputError as e:
-            return self.error(input_output, str(e), 400)
-
-        errors = self._check_payload(payload)
-        if errors:
-            return self.input_errors(input_output, input_errors)
-
-        # The user may have provided a rotate callable, in which case just use that.
-        if self.configuration('rotate_callable'):
-            new_payload = self._di.call_function(
-                self.configuration('rotate_callable'),
-                **payload,
-                payload=payload,
-            )
-        # otherwise, perform a standard create+revoke
-        else:
-            new_payload = self._di.call_function(
-                self.configuration('create_callable'),
-                **payload,
-                payload=payload,
-                for_rotate=True,
-            )
-            if self.configuration('can_revoke'):
-                self._di.call_function(
-                    self.configuration('revoke_callable'),
-                    **payload,
-                    payload=payload,
-                    id_to_delete=payload.get(self.configuration('id_column_name')),
-                )
-
-        return input_output.respond({
-            'payload': json.dumps(new_payload),
-        }, 200)
-
-    def documentation(self):
-        return []
-
-    def documentation_security_schemes(self):
-        return {}
-
-    def documentation_models(self):
-        return {}
