@@ -39,7 +39,7 @@ class WithInput(NoInput):
         # this, or if they skip this if it is not present.
         if not request_json.get('input'):
             return {}
-        if type(request_json['input']) != dict:
+        if not isinstance(request_json['input'], dict):
             raise InputError("'input' from request body was not a dictionary and I don't know what to do!")
         return request_json.get('input')
 
@@ -60,7 +60,7 @@ class WithInput(NoInput):
 
         errors = self._check_payload(payload)
         if errors:
-            return self.input_errors(input_output, input_errors)
+            return self.input_errors(input_output, errors)
 
         try:
             input_args = self._get_input(input_output)
@@ -69,7 +69,7 @@ class WithInput(NoInput):
 
         errors = self._check_input(input_args)
         if errors:
-            return self.input_errors(input_output, input_errors)
+            return self.input_errors(input_output, errors)
 
         try:
             credentials = self._di.call_function(
