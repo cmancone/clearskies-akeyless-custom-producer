@@ -30,6 +30,7 @@ class WithInput(NoInput):
     def _check_configuration(self, configuration):
         super()._check_configuration(configuration)
         if configuration.get('input_schema') is not None:
+            error_prefix = f"Configuration error for handler '{self.__class__.__name__}':"
             self._check_schema(configuration['input_schema'], None, error_prefix)
 
     def _get_input(self, input_output):
